@@ -3,7 +3,7 @@ import time
 
 # Replace COM11 with your port
 ser = serial.Serial(
-    port="COM11",
+    port="COM7",
     baudrate=9600,
     bytesize=serial.EIGHTBITS,
     parity=serial.PARITY_NONE,

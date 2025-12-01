@@ -4,7 +4,7 @@ import time
 # Adjust this to your USB-to-serial adapter COM port
 # On Windows: "COM3" or "COM4"
 # On Linux/Mac: "/dev/ttyUSB0"
-SERIAL_PORT = "COM3"
+SERIAL_PORT = "COM11"
 BAUDRATE = 9600  # Must match DIP switch setting
 TIMEOUT = 1
 
@@ -24,7 +24,7 @@ try:
         parity=serial.PARITY_NONE,
         stopbits=serial.STOPBITS_ONE,
         timeout=TIMEOUT,
-        xonxoff=False,   # set True if DIP switches set to XON/XOFF
+        xonxoff=True,   # set True if DIP switches set to XON/XOFF
         rtscts=False,    # set True if DIP switches set to RTS/CTS
         dsrdtr=False     # set True if DIP switches set to DTR/DSR
     )
