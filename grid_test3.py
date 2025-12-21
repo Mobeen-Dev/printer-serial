@@ -15,14 +15,14 @@ GS = b'\x1d'
 
 # === Adjustable parameters ===
 WIDTH = 512    # 80mm printer width (72mm printable = 512 dots)
-HEIGHT = 800   # Paper length (taller = longer receipt)
-GRID_X_SPACING = 80   # Spacing along paper length (X-axis)
+HEIGHT = 1200   # Paper length (taller = longer receipt)
+GRID_X_SPACING = 80   # Spacing along paper length (X-axis) - 40 per sec
 GRID_Y_SPACING = 64   # Spacing across paper width (Y-axis)
 GRID_DASHED = True    # Dashed grid lines
 # ==============================
 
 class EpsonThermalPrinter:
-    def __init__(self, port='COM7', baudrate=9600):
+    def __init__(self, port='COM7', baudrate=19200):
         """Initialize the printer connection"""
         self.ser = serial.Serial(
             port=port,
@@ -98,16 +98,16 @@ class EpsonThermalPrinter:
         
         # Send command header
         self.ser.write(cmd)
-        time.sleep(0.05)
+        # time.sleep(0.05)
         
         # Send bitmap data in chunks
-        chunk_size = 1024
+        chunk_size = 4096
         for i in range(0, len(bitmap_data), chunk_size):
             chunk = bitmap_data[i:i + chunk_size]
             self.ser.write(chunk)
-            time.sleep(0.02)
+            # time.sleep(0.008)
         
-        time.sleep(0.5)
+        time.sleep(0.2)
     
     def feed(self, lines=1):
         """Feed paper by specified lines"""
@@ -265,7 +265,7 @@ def main():
     # Connect to printer
     print("\n[1/6] Connecting to printer on COM7...")
     try:
-        printer = EpsonThermalPrinter(port='COM7', baudrate=9600)
+        printer = EpsonThermalPrinter(port='COM7', baudrate=19200)
         print("      ✓ Connected")
     except Exception as e:
         print(f"      ✗ Error: {e}")
