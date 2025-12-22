@@ -16,9 +16,9 @@ GS = b"\x1d"
 
 # === Adjustable parameters ===
 WIDTH = 512  # 80mm printer width
-HEIGHT = 1200  # Paper length
-GRID_X_SPACING = 80  # X-axis spacing (2 time units per division)
-GRID_Y_SPACING = 60  # Y-axis spacing (25K pressure per division)
+HEIGHT = 1200  # Graph length
+GRID_X_SPACING = 80  # X-axis spacing (space per time division)
+GRID_Y_SPACING = 60  # Y-axis spacing (space per pressure division)
 GRID_DASHED = True
 
 # Axis ranges
@@ -33,9 +33,9 @@ TOP_MARGIN = 70  # Space for Y-axis labels at top (CRITICAL FIX)
 BOTTOM_MARGIN = 10  # Space for bottom text
 
 # Adjusted dimensions
-HEIGHT += TOP_MARGIN
+HEIGHT = HEIGHT + TOP_MARGIN  # Bit-map length for y-axis label + graph area
 GRAPH_WIDTH = int(GRID_Y_SPACING * (Y_MAX / Y_STEP))
-GRAPH_START_X = LEFT_MARGIN
+GRAPH_START_X = LEFT_MARGIN # Grid starts Above the X-axis labels
 GRAPH_START_Y = TOP_MARGIN  # Grid starts BELOW the Y-axis labels
 # ==============================
 
@@ -399,10 +399,10 @@ def create_complete_graph():
         x = center_x + extent
         canvas.draw_thick_point(x, y, 2)
 
-    # Draw center baseline
-    center_x = GRAPH_START_X + GRAPH_WIDTH // 2
-    for y in range(GRAPH_START_Y, HEIGHT, 2):
-        canvas.set_pixel(center_x, y)
+    # # Draw center baseline
+    # center_x = GRAPH_START_X + GRAPH_WIDTH // 2
+    # for y in range(GRAPH_START_Y, HEIGHT, 2):
+    #     canvas.set_pixel(center_x, y)
 
     # Draw axis titles at bottom (rotated 90° clockwise)
     canvas.draw_text("TIME", WIDTH // 2 - 15, HEIGHT + 5, 1, rotate_90=True)
