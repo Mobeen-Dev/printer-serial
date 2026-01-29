@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-Epson TM-T88III (80mm) - Distribution with Rotated Axis Labels
-FIXED: Y-axis labels print FIRST at top, grid prints BELOW
-Axis labels are drawn INTO the bitmap with 90° clockwise rotation
-All text reads vertically down the paper
+Epson TM-T88III (80mm) - Distribution with Build-up Curve
+Updated to use build-up/drop/recovery pattern instead of hardcoded distribution
 """
 
 import serial
 import time
-import math
+import random
 
 # === ESC/POS Commands ===
 ESC = b"\x1b"
@@ -29,13 +27,13 @@ Y_STEP = 25  # Step: 25K
 
 # Margins for labels
 LEFT_MARGIN = 30  # Space for X-axis labels on left
-TOP_MARGIN = 70  # Space for Y-axis labels at top (CRITICAL FIX)
+TOP_MARGIN = 70  # Space for Y-axis labels at top
 BOTTOM_MARGIN = 10  # Space for bottom text
 
 # Adjusted dimensions
 HEIGHT = HEIGHT + TOP_MARGIN  # Bit-map length for y-axis label + graph area
 GRAPH_WIDTH = int(GRID_Y_SPACING * (Y_MAX / Y_STEP))
-GRAPH_START_X = LEFT_MARGIN # Grid starts Above the X-axis labels
+GRAPH_START_X = LEFT_MARGIN  # Grid starts Above the X-axis labels
 GRAPH_START_Y = TOP_MARGIN  # Grid starts BELOW the Y-axis labels
 # ==============================
 
@@ -125,7 +123,6 @@ class EpsonThermalPrinter:
 
     def feed(self, lines=1):
         self.ser.write(ESC + b"d" + bytes([lines]))
-        # time.sleep(lines * 0.1)
 
     def close(self):
         if self.ser and self.ser.is_open:
@@ -313,38 +310,129 @@ class BitmapCanvas:
             for dx in range(-thickness, thickness + 1):
                 self.set_pixel(x + dx, y + dy)
 
+    def draw_line(self, x0, y0, x1, y1):
+        """Draw line using Bresenham's algorithm"""
+        dx = abs(x1 - x0)
+        dy = -abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx + dy
 
-def return_graph_value(x, mu, sigma, alpha):
-    z = (x - mu) / sigma
-    base = math.exp(-0.5 * z * z)
-    skew = 1.0 - alpha * (x - mu)
-    if skew < 0:
-        skew = 0
-    return base * skew
+        while True:
+            self.set_pixel(x0, y0)
+
+            if x0 == x1 and y0 == y1:
+                break
+
+            e2 = 2 * err
+            if e2 >= dy:
+                err += dy
+                x0 += sx
+            if e2 <= dx:
+                err += dx
+                y0 += sy
+
+
+def generate_sample_data(num_points=4800):
+    """Generate build-up/drop/recovery pattern data"""
+    data = []
+    cycle_len = num_points
+
+    for c in range(1):
+        # 1️⃣ Build-up curve
+        for i in range(int(cycle_len * 0.4)):
+            p = i / (cycle_len * 0.4)
+            val = 150 * (p**2) + random.uniform(-5, 5)
+            data.append(max(0, val))
+
+        # 2️⃣ Sudden drop (brick break)
+        data.append(5)
+
+        # 3️⃣ Recovery tail
+        remaining = cycle_len - len(data) % cycle_len
+        for i in range(remaining):
+            p = i / remaining
+            val = 40 * (1 - p) + random.uniform(-3, 3)
+            data.append(max(0, val))
+
+    return data[:num_points]
+
+
+def moving_average(data, window=5):
+    """Apply moving average smoothing"""
+    if window < 2:
+        return data[:]
+
+    half = window // 2
+    out = []
+
+    for i in range(len(data)):
+        s = 0
+        c = 0
+        for j in range(i - half, i + half + 1):
+            if 0 <= j < len(data):
+                s += data[j]
+                c += 1
+        out.append(s / c)
+
+    return out
+
+
+def generate_graph_points(data, graph_width=480, graph_height=1200, margin=10):
+    """Convert raw data to graph points with downsampling and scaling"""
+    if not data:
+        raise ValueError("Empty data")
+
+    # --- Downsample to graph_height points using max pooling ---
+    if len(data) > graph_height:
+        ratio = len(data) / graph_height
+        reduced = []
+        for i in range(graph_height):
+            start = int(i * ratio)
+            end = int((i + 1) * ratio)
+            segment = data[start:end]
+            reduced.append(max(segment) if segment else data[start])
+
+        # Apply smoothing
+        data = moving_average(reduced, window=11)
+    # Pad if smaller
+    elif len(data) < graph_height:
+        data = data + [0] * (graph_height - len(data))
+
+    # --- Scaling ---
+    dmin = min(data)
+    dmax = max(data)
+    center_x = graph_width // 2
+
+    if dmax - dmin == 0:
+        scale = 0
+    else:
+        scale = (graph_width // 2 - margin) / (dmax - dmin)
+
+    # --- Convert to pixel points ---
+    points = []
+    for y in range(graph_height):
+        val = data[y]
+        extent = int((val - dmin) * scale)
+        x = center_x + extent
+        points.append((x, y))
+
+    return points
 
 
 def create_complete_graph():
-    """Create complete graph with embedded labels"""
+    """Create complete graph with embedded labels and build-up curve"""
     canvas = BitmapCanvas(WIDTH, HEIGHT + BOTTOM_MARGIN)
     canvas.clear()
 
     # STEP 1: Draw Y-axis labels FIRST at the top (Pressure - across the width)
-    # Labels are rotated 90° clockwise and read vertically
-    # These print BEFORE the grid to prevent overlap/cutoff
     num_y_div = int(Y_MAX / Y_STEP)
     for i in range(num_y_div + 1):
         x_pos = GRAPH_START_X + i * GRID_Y_SPACING
         value = i * Y_STEP
 
-        # Draw rotated label at the very top with proper spacing
-        if value == 0:
-            # canvas.draw_text("0", x_pos - 3, 5, 2, rotate_90=True)
-            pass
-        else:
+        if value != 0:
             label = f"{value}K"
-            # Labels start at y=5 and extend downward (rotated 90° CW)
-            # At size 2, each character is ~8*2=16 pixels wide when rotated
-            # "200K" = 4 chars * 16 = 64 pixels downward, fits within TOP_MARGIN
             canvas.draw_text(label, x_pos - 13, 5, 2, rotate_90=True)
 
     # STEP 2: Draw grid BELOW the Y-axis labels (starting at GRAPH_START_Y)
@@ -371,47 +459,33 @@ def create_complete_graph():
             label = str(value)
             canvas.draw_text(label, 10, y_pos - 3, 2, rotate_90=True)
 
-    # STEP 4: Draw distribution curve
-    values = []
-    max_val = 0.0
+    # STEP 4: Generate and draw build-up curve
+    print("      → Generating sample data...")
+    raw_data = generate_sample_data(num_points=4800)
 
-    MU = 0.35
-    SIGMA = 0.15
-    ALPHA = 1.2
-    AMPLIFY = 1.5
+    print("      → Converting to graph points...")
+    graph_height = HEIGHT - GRAPH_START_Y
+    points = generate_graph_points(raw_data, GRAPH_WIDTH, graph_height, margin=10)
 
-    for y in range(GRAPH_START_Y, HEIGHT):
-        yf = (y - GRAPH_START_Y) / (HEIGHT - GRAPH_START_Y - 1)
-        v = return_graph_value(yf, MU, SIGMA, ALPHA)
-        v *= AMPLIFY
-        values.append(v)
-        if v > max_val:
-            max_val = v
+    print(f"      → Drawing curve with {len(points)} points...")
+    # Draw the curve using line segments
+    if points:
+        prev_x, prev_y = points[0]
+        prev_y += GRAPH_START_Y  # Offset to start below labels
 
-    if max_val < 1e-6:
-        max_val = 1.0
+        for x, y in points[1:]:
+            y += GRAPH_START_Y  # Offset to start below labels
+            canvas.draw_line(prev_x, prev_y, x, y)
+            prev_x, prev_y = x, y
 
-    for idx, y in enumerate(range(GRAPH_START_Y, HEIGHT)):
-        n = values[idx] / max_val
-        center_x = GRAPH_START_X + GRAPH_WIDTH // 2
-        extent = int(n * (GRAPH_WIDTH // 2 - 10))
-
-        x = center_x + extent
-        canvas.draw_thick_point(x, y, 2)
-
-    # # Draw center baseline
-    # center_x = GRAPH_START_X + GRAPH_WIDTH // 2
-    # for y in range(GRAPH_START_Y, HEIGHT, 2):
-    #     canvas.set_pixel(center_x, y)
-
-    # Draw axis titles at bottom (rotated 90° clockwise)
+    # Draw axis title at bottom
     canvas.draw_text("TIME", WIDTH // 2 - 15, HEIGHT + 5, 1, rotate_90=True)
 
     return canvas
 
 
 def main():
-    print("Epson TM-T88III - FIXED: Labels Above Grid")
+    print("Epson TM-T88III - Build-up Curve Pattern")
     print("=" * 60)
     print("Configuration:")
     print(f"  Canvas: {WIDTH}×{HEIGHT + BOTTOM_MARGIN} pixels")
@@ -420,6 +494,7 @@ def main():
     print(f"  Graph area: {GRAPH_WIDTH}×{HEIGHT - GRAPH_START_Y} pixels")
     print(f"  X-axis: 0 to {X_MAX} (step {X_STEP})")
     print(f"  Y-axis: 0 to {Y_MAX}K (step {Y_STEP}K)")
+    print("  Pattern: Build-up → Drop → Recovery")
     print("=" * 60)
 
     print("\n[1/4] Connecting to printer...")
@@ -436,14 +511,14 @@ def main():
         printer.set_line_height(24)
         print("      ✓ Configuration applied")
 
-        print("\n[3/4] Creating graph with labels ABOVE grid...")
+        print("\n[3/4] Creating graph with build-up curve...")
         canvas = create_complete_graph()
         print(f"      ✓ Graph created: {canvas.width}×{canvas.height} pixels")
 
         print("\n[4/4] Printing to device...")
         printer.set_align("center")
         printer.set_font_size(2, 2)
-        printer.println("Distribution Graph")
+        printer.println("Build-up Curve Graph")
         printer.feed(8)
         printer.set_font_size(1, 1)
         printer.println("")
@@ -463,15 +538,11 @@ def main():
         print("\nOutput structure:")
         print("  ├─ Title")
         print("  ├─ Y-axis labels at TOP: 0  25K  50K  75K... 200K (rotated 90° CW)")
-        print("  │    └─ Printed FIRST in reserved space")
-        print("  ├─ Grid starts BELOW labels (no overlap)")
+        print("  ├─ Grid starts BELOW labels")
         print("  ├─ X-axis labels on left: 0, 2, 4... 30 (rotated 90° CW)")
-        print("  ├─ Distribution curve")
+        print("  ├─ Build-up curve (quadratic rise → drop → recovery)")
         print("  ├─ 'TIME' label at bottom (rotated 90° CW)")
         print("  └─ 'PRESSURE' title at end")
-        print("\n  ✓ Y-axis labels have {TOP_MARGIN}px clearance")
-        print("  ✓ Grid starts at Y={GRAPH_START_Y}px")
-        print("  ✓ No label cutoff or overlap!")
 
     except Exception as e:
         print(f"\n✗ Error: {e}")
