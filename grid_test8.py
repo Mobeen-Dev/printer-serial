@@ -425,8 +425,28 @@ def moving_average(data, window=5):
     return out
 
 
-def generate_graph_points(data, graph_width=480, graph_height=1200, margin=10):
-    """Convert raw data to graph points with downsampling and scaling"""
+def generate_graph_points(
+    data,
+    graph_width=480,
+    graph_height=1200,
+    margin=10,
+    pressure_min=0,
+    pressure_max=200,
+):
+    """
+    Convert raw data to graph points with proper scaling to pressure range
+
+    Parameters:
+    - data: Raw pressure values (should be in range 0-200)
+    - graph_width: Width of the graph area in pixels
+    - graph_height: Height of the graph area in pixels
+    - margin: Safety margin from edges
+    - pressure_min: Minimum pressure value (default 0)
+    - pressure_max: Maximum pressure value (default 200 for 200K)
+
+    Returns:
+    - List of (x, y) points where x maps to pressure scale
+    """
     if not data:
         raise ValueError("Empty data")
 
@@ -446,22 +466,33 @@ def generate_graph_points(data, graph_width=480, graph_height=1200, margin=10):
     elif len(data) < graph_height:
         data = data + [0] * (graph_height - len(data))
 
-    # --- Scaling ---
-    dmin = min(data)
-    dmax = max(data)
-    center_x = graph_width // 2
+    # --- FIXED SCALING: Map to full 0-200K pressure range ---
+    # Instead of auto-scaling to data min/max, we map to the expected pressure range
+    # This ensures 0 → leftmost position, 200 → rightmost position
 
-    if dmax - dmin == 0:
+    usable_width = graph_width - (2 * margin)  # Width minus margins
+
+    if pressure_max - pressure_min == 0:
         scale = 0
     else:
-        scale = (graph_width // 2 - margin) / (dmax - dmin)
+        # Scale factor: pixels per pressure unit
+        scale = usable_width / (pressure_max - pressure_min)
+
+    # Starting X position (left edge with margin)
+    start_x = margin
 
     # --- Convert to pixel points ---
     points = []
     for y in range(graph_height):
         val = data[y]
-        extent = int((val - dmin) * scale)
-        x = center_x + extent
+
+        # Clamp value to expected range
+        val = max(pressure_min, min(pressure_max, val))
+
+        # Map value to x position: 0 → start_x, 200 → start_x + usable_width
+        x_offset = int((val - pressure_min) * scale)
+        x = start_x + x_offset
+
         points.append((x, y))
 
     return points
@@ -513,11 +544,23 @@ def create_complete_graph():
     )
     print("      → Converting to graph points...")
     graph_height = HEIGHT - GRAPH_START_Y
-    points = generate_graph_points(raw_data, GRAPH_WIDTH, graph_height, margin=10)
+
+    # Map data to full pressure range (0-200K)
+    points = generate_graph_points(
+        raw_data,
+        GRAPH_WIDTH,
+        graph_height,
+        margin=10,
+        pressure_min=0,  # Minimum pressure (0K)
+        pressure_max=200,  # Maximum pressure (200K)
+    )
 
     print(f"      → Drawing thick curve with {len(points)} points...")
+    print(f"      → Data range: {min(raw_data):.1f} to {max(raw_data):.1f}")
+    print(f"      → Mapped to full width: 0K → {GRAPH_WIDTH}px")
+
     # Draw the curve using thick line segments
-    LINE_THICKNESS = 1  # Adjustable thickness (2-6 recommended)
+    LINE_THICKNESS = 1  # Adjustable thickness (1-6 recommended)
     if points:
         prev_x, prev_y = points[0]
         prev_y += GRAPH_START_Y  # Offset to start below labels
@@ -570,7 +613,7 @@ def main():
         printer.set_align("center")
         printer.set_font_size(2, 2)
         printer.println("Build-up Curve Graph")
-        printer.feed(8)
+        printer.feed(2)
         printer.set_font_size(1, 1)
         printer.println("")
 
@@ -591,15 +634,16 @@ def main():
         print("  ├─ Y-axis labels at TOP: 25K  50K  75K... 200K (rotated 90° CW)")
         print("  ├─ Grid starts BELOW labels")
         print("  ├─ X-axis labels on left: 0, 2, 4... 30s (rotated 90° CW)")
-        print("  ├─ THICK curve: 0 → 200K (over ≤26s) → Sudden drop to 0")
+        print("  ├─ CURVE: 0K → 200K (over ≤26s) → Sudden drop to 0K")
         print("  ├─ 'TIME' label at bottom (rotated 90° CW)")
         print("  └─ 'PRESSURE' title at end")
         print("\n  Pattern Details:")
-        print("    • Starts at 0 pressure")
-        print("    • Rises to maximum 200K")
+        print("    • Starts at 0 pressure (leftmost)")
+        print("    • Rises to maximum 200K (rightmost)")
         print("    • Rise completes within 26 seconds")
         print("    • Sudden drop to 0 after peak")
-        print("    • Line thickness: 4 pixels (highly visible)")
+        print("    • Line thickness: 1 pixel")
+        print("    • ✓ FIXED: Now uses FULL width (0K-200K range)")
 
     except Exception as e:
         print(f"\n✗ Error: {e}")
