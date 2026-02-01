@@ -429,7 +429,7 @@ def generate_graph_points(
     data,
     graph_width=480,
     graph_height=1200,
-    margin=10,
+    graph_start_x=30,
     pressure_min=0,
     pressure_max=200,
 ):
@@ -438,14 +438,18 @@ def generate_graph_points(
 
     Parameters:
     - data: Raw pressure values (should be in range 0-200)
-    - graph_width: Width of the graph area in pixels
+    - graph_width: Width of the graph area in pixels (full width)
     - graph_height: Height of the graph area in pixels
-    - margin: Safety margin from edges
+    - graph_start_x: Starting X position (left edge of graph area)
     - pressure_min: Minimum pressure value (default 0)
     - pressure_max: Maximum pressure value (default 200 for 200K)
 
     Returns:
     - List of (x, y) points where x maps to pressure scale
+
+    Mapping:
+    - pressure_min (0) → x = graph_start_x (30)
+    - pressure_max (200) → x = graph_start_x + graph_width (30 + 480 = 510)
     """
     if not data:
         raise ValueError("Empty data")
@@ -467,19 +471,14 @@ def generate_graph_points(
         data = data + [0] * (graph_height - len(data))
 
     # --- FIXED SCALING: Map to full 0-200K pressure range ---
-    # Instead of auto-scaling to data min/max, we map to the expected pressure range
-    # This ensures 0 → leftmost position, 200 → rightmost position
-
-    usable_width = graph_width - (2 * margin)  # Width minus margins
+    # Map directly to grid: 0K at leftmost line, 200K at rightmost line
 
     if pressure_max - pressure_min == 0:
         scale = 0
     else:
         # Scale factor: pixels per pressure unit
-        scale = usable_width / (pressure_max - pressure_min)
-
-    # Starting X position (left edge with margin)
-    start_x = margin
+        # Use FULL graph_width (no margin reduction)
+        scale = graph_width / (pressure_max - pressure_min)
 
     # --- Convert to pixel points ---
     points = []
@@ -489,9 +488,11 @@ def generate_graph_points(
         # Clamp value to expected range
         val = max(pressure_min, min(pressure_max, val))
 
-        # Map value to x position: 0 → start_x, 200 → start_x + usable_width
+        # Map value to x position
+        # 0   → graph_start_x (e.g., 30)
+        # 200 → graph_start_x + graph_width (e.g., 30 + 480 = 510)
         x_offset = int((val - pressure_min) * scale)
-        x = start_x + x_offset
+        x = graph_start_x + x_offset
 
         points.append((x, y))
 
@@ -546,18 +547,20 @@ def create_complete_graph():
     graph_height = HEIGHT - GRAPH_START_Y
 
     # Map data to full pressure range (0-200K)
+    # CRITICAL: Use GRAPH_START_X (not margin) for correct alignment with grid
     points = generate_graph_points(
         raw_data,
-        GRAPH_WIDTH,
-        graph_height,
-        margin=10,
-        pressure_min=0,  # Minimum pressure (0K)
-        pressure_max=200,  # Maximum pressure (200K)
+        graph_width=GRAPH_WIDTH,  # Full width: 480 pixels
+        graph_height=graph_height,  # Height: ~1200 pixels
+        graph_start_x=GRAPH_START_X,  # Start at x=30 (leftmost grid line)
+        pressure_min=0,  # 0K
+        pressure_max=200,  # 200K
     )
 
     print(f"      → Drawing thick curve with {len(points)} points...")
     print(f"      → Data range: {min(raw_data):.1f} to {max(raw_data):.1f}")
-    print(f"      → Mapped to full width: 0K → {GRAPH_WIDTH}px")
+    print(f"      → Mapped to X: {GRAPH_START_X} to {GRAPH_START_X + GRAPH_WIDTH}")
+    print(f"      → Grid lines: 0K@{GRAPH_START_X}, 200K@{GRAPH_START_X + GRAPH_WIDTH}")
 
     # Draw the curve using thick line segments
     LINE_THICKNESS = 1  # Adjustable thickness (1-6 recommended)
@@ -613,7 +616,7 @@ def main():
         printer.set_align("center")
         printer.set_font_size(2, 2)
         printer.println("Build-up Curve Graph")
-        printer.feed(2)
+        printer.feed(8)
         printer.set_font_size(1, 1)
         printer.println("")
 
