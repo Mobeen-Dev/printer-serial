@@ -8,7 +8,7 @@ This script generates and prints a professional distribution graph directly to a
 
 ### What It Prints
 
-![Thermal graph](./media/plot.png)
+![Thermal graph](./media/v1-results.png)
 
 ## 🚀 Quick Start
 
@@ -26,7 +26,7 @@ pip install pyserial
 
 # Clone or download this script
 # Run it
-python epson_printer_fixed.py
+python plotGraphFromTerminal.py
 ```
 
 ### Configuration
@@ -34,7 +34,6 @@ python epson_printer_fixed.py
 Before running, update the COM port in the script:
 
 ```python
-# Line ~380 - Update to match your system
 printer = EpsonThermalPrinter(port="COM7", baudrate=19200)
 ```
 
