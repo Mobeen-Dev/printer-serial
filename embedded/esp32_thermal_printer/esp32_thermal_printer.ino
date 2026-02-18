@@ -24,7 +24,7 @@
 #include "GraphGenerator.h"
 
 // ======== LED Configuration ========
-#define LED_PIN     48
+#define LED_PIN     48           // on-board WS2812 data line
 #define NUM_LEDS    1
 #define BRIGHTNESS  128
 
