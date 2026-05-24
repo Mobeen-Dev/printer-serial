@@ -1,13 +1,18 @@
 /*
  * GraphGenerator.h
  * Graph generation and curve plotting for thermal printer
- * Generates build-up curve with configurable patterns
+ *
+ * Refactor note:
+ *  - Data sourcing is now external (DataSource HAL)
+ *  - Curve pipeline uses int16_t (0..Y_MAX) and supports PROGMEM-backed sources
  */
 
 #ifndef GRAPH_GENERATOR_H
 #define GRAPH_GENERATOR_H
 
 #include <Arduino.h>
+#include <pgmspace.h>
+
 #include "BitmapCanvas.h"
 
 class GraphGenerator {
@@ -17,53 +22,49 @@ private:
   uint16_t height;
   uint16_t leftMargin;
   uint16_t topMargin;
-  
+
   uint16_t xMax;
   uint16_t xStep;
   uint16_t yMax;
   uint16_t yStep;
-  
+
   uint16_t gridXSpacing;
   uint16_t gridYSpacing;
-  
+
   uint16_t graphWidth;
   uint16_t graphStartX;
   uint16_t graphStartY;
-  
-  // Simple random number generator (LCG)
-  uint32_t randSeed;
-  
-  float random_float(float min_val, float max_val) {
-    // Linear Congruential Generator
-    randSeed = (1103515245 * randSeed + 12345) & 0x7FFFFFFF;
-    float r = (float)randSeed / 0x7FFFFFFF;
-    return min_val + r * (max_val - min_val);
+
+  static inline int16_t readSample(const int16_t* data, uint16_t idx) {
+    // PROGMEM-safe read (also works for RAM on ESP32)
+    return (int16_t)pgm_read_word(&data[idx]);
   }
-  
+
   // Moving average filter
-  void applyMovingAverage(float* data, uint16_t dataLen, uint8_t window = 5) {
-    if (window < 2 || !data) return;
-    
-    float* temp = (float*)malloc(dataLen * sizeof(float));
+  // Smoothing kept for future live UART data which may be noisy
+  void applyMovingAverage(int16_t* data, uint16_t dataLen, uint8_t window = 5) {
+    if (window < 2 || !data || dataLen == 0) return;
+
+    int16_t* temp = (int16_t*)malloc(dataLen * sizeof(int16_t));
     if (!temp) return;
-    
+
     int16_t half = window / 2;
-    
+
     for (uint16_t i = 0; i < dataLen; i++) {
-      float sum = 0;
+      int32_t sum = 0;
       uint16_t count = 0;
-      
-      for (int16_t j = i - half; j <= i + half; j++) {
-        if (j >= 0 && j < dataLen) {
-          sum += data[j];
+
+      for (int16_t j = (int16_t)i - half; j <= (int16_t)i + half; j++) {
+        if (j >= 0 && j < (int16_t)dataLen) {
+          sum += data[(uint16_t)j];
           count++;
         }
       }
-      
-      temp[i] = sum / count;
+
+      temp[i] = (count > 0) ? (int16_t)(sum / (int32_t)count) : data[i];
     }
-    
-    memcpy(data, temp, dataLen * sizeof(float));
+
+    memcpy(data, temp, dataLen * sizeof(int16_t));
     free(temp);
   }
 
@@ -82,9 +83,6 @@ public:
     graphWidth = gridYSpacing * (yMax / yStep);
     graphStartX = leftMargin;
     graphStartY = topMargin;
-    
-    // Initialize random seed
-    randSeed = micros();
   }
   
   // Draw Y-axis labels (Pressure - horizontal across top)
@@ -143,132 +141,91 @@ public:
     canvas->drawText("TIME", width / 2 - 15, height + topMargin + 5, 1, true);
   }
   
-  // Generate build-up curve data
-  // pattern: 1 = Quadratic, 2 = Linear with noise
-  float* generateBuildUpCurve(uint16_t numPoints, uint8_t pattern = 1) {
-    float* data = (float*)malloc(numPoints * sizeof(float));
-    if (!data) {
-      Serial.println("  ✗ Failed to allocate curve data!");
-      return nullptr;
-    }
-    
-    // Calculate rise time: 26 seconds out of 30 (86.7%)
-    uint16_t risePoints = (numPoints * 26) / 30;
-    
-    if (pattern == 1) {
-      // ═══════════════════════════════════════════════════════════
-      // PATTERN 1: Quadratic build-up (smooth acceleration)
-      // ═══════════════════════════════════════════════════════════
-      
-      for (uint16_t i = 0; i < risePoints; i++) {
-        float progress = (float)i / risePoints;
-        float baseValue = yMax * (progress * progress);  // Quadratic
-        float noise = random_float(-3.0, 3.0);
-        data[i] = constrain(baseValue + noise, 0, yMax);
-      }
-      
-      // Sudden drop to 0
-      for (uint16_t i = risePoints; i < numPoints; i++) {
-        data[i] = 0;
-      }
-      
-    } else if (pattern == 2) {
-      // ═══════════════════════════════════════════════════════════
-      // PATTERN 2: Linear with noise (steady rise)
-      // ═══════════════════════════════════════════════════════════
-      
-      for (uint16_t i = 0; i < risePoints; i++) {
-        float progress = (float)i / risePoints;
-        float baseValue = yMax * progress;  // Linear
-        float noise = random_float(-8.0, 8.0);
-        data[i] = constrain(baseValue + noise, 0, yMax);
-      }
-      
-      // Sudden drop to 0
-      for (uint16_t i = risePoints; i < numPoints; i++) {
-        data[i] = 0;
-      }
-      
-    } else {
-      Serial.printf("  ✗ Invalid pattern %d!\n", pattern);
-      free(data);
-      return nullptr;
-    }
-    
-    Serial.printf("  ✓ Generated %d data points (Pattern %d)\n", numPoints, pattern);
-    return data;
-  }
-  
   // Draw curve on canvas
-  void drawCurve(const float* rawData, uint16_t dataLen, uint8_t thickness = 1) {
-    if (!rawData || !canvas || dataLen == 0) {
-      Serial.println("  ✗ Invalid curve data!");
+  void drawCurve(const int16_t* rawData, uint16_t dataLen, uint8_t thickness = 1) {
+    if (!canvas || !canvas->isValid()) {
+      Serial.println("  ✗ Canvas invalid!");
       return;
     }
-    
-    uint16_t graphHeight = height - graphStartY;
-    
+
+    if (!rawData) {
+      Serial.println("  ✗ Curve data pointer is null!");
+      return;
+    }
+
+    if (dataLen == 0) {
+      Serial.println("  ✗ Curve data length is 0!");
+      return;
+    }
+
+    // Graph plotting height is the graph area height (not including margins)
+    const uint16_t graphHeight = height;
+
     // Downsample to graph height using max pooling
-    float* processedData = (float*)malloc(graphHeight * sizeof(float));
+    int16_t* processedData = (int16_t*)malloc(graphHeight * sizeof(int16_t));
     if (!processedData) {
       Serial.println("  ✗ Failed to allocate processed data!");
       return;
     }
-    
-    if (dataLen > graphHeight) {
-      float ratio = (float)dataLen / graphHeight;
-      
+
+    if (dataLen >= graphHeight) {
+      const float ratio = (float)dataLen / (float)graphHeight;
+
       for (uint16_t i = 0; i < graphHeight; i++) {
-        uint16_t start = (uint16_t)(i * ratio);
-        uint16_t end = (uint16_t)((i + 1) * ratio);
-        
-        float maxVal = 0;
+        const uint16_t start = (uint16_t)(i * ratio);
+        const uint16_t end = (uint16_t)((i + 1) * ratio);
+
+        int16_t maxVal = 0;
         for (uint16_t j = start; j < end && j < dataLen; j++) {
-          if (rawData[j] > maxVal) {
-            maxVal = rawData[j];
+          int16_t v = readSample(rawData, j);
+          v = (int16_t)constrain(v, 0, (int16_t)yMax);
+          if (v > maxVal) {
+            maxVal = v;
           }
         }
+
         processedData[i] = maxVal;
       }
     } else {
       // Copy and pad if needed
       for (uint16_t i = 0; i < dataLen && i < graphHeight; i++) {
-        processedData[i] = rawData[i];
+        int16_t v = readSample(rawData, i);
+        processedData[i] = (int16_t)constrain(v, 0, (int16_t)yMax);
       }
       for (uint16_t i = dataLen; i < graphHeight; i++) {
         processedData[i] = 0;
       }
     }
-    
+
     // Apply smoothing
     applyMovingAverage(processedData, graphHeight, 11);
-    
+
     // Scale factor: pixels per pressure unit
-    float scale = (float)graphWidth / yMax;
-    
+    const float scale = (float)graphWidth / (float)yMax;
+
     // Convert to pixel coordinates and draw
     int16_t prevX = 0, prevY = 0;
     bool first = true;
-    
+
     for (uint16_t y = 0; y < graphHeight; y++) {
-      float val = constrain(processedData[y], 0, yMax);
-      
+      int16_t val = (int16_t)constrain(processedData[y], 0, (int16_t)yMax);
+
       // Map value to x position
-      int16_t xOffset = (int16_t)(val * scale);
-      int16_t x = graphStartX + xOffset;
-      int16_t yPos = graphStartY + y;
-      
+      const int16_t xOffset = (int16_t)(val * scale);
+      const int16_t x = (int16_t)graphStartX + xOffset;
+      const int16_t yPos = (int16_t)graphStartY + (int16_t)y;
+
       if (!first) {
         canvas->drawLine(prevX, prevY, x, yPos, thickness);
       }
-      
+
       prevX = x;
       prevY = yPos;
       first = false;
     }
-    
+
     free(processedData);
-    
+
     Serial.println("  ✓ Curve drawn");
   }
 };

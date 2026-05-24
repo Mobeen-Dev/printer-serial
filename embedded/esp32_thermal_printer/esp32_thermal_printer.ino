@@ -19,9 +19,13 @@
 
 #include <FastLED.h>
 #include <HardwareSerial.h>
+
 #include "ThermalPrinter.h"
 #include "BitmapCanvas.h"
 #include "GraphGenerator.h"
+
+#include "DataSource.h"
+#include "HardcodedDataSource.h"
 
 // ======== LED Configuration ========
 #define LED_PIN     48           // on-board WS2812 data line
@@ -55,6 +59,9 @@ HardwareSerial PrinterSerial(1);
 
 // ======== Global Objects ========
 ThermalPrinter* printer = nullptr;
+
+// DATA SOURCE — swap HardcodedDataSource for UARTDataSource when IC is ready
+DataSource* dataSource = new HardcodedDataSource();
 
 // ======== LED Status Functions ========
 void setLEDColor(CRGB color) {
@@ -172,19 +179,40 @@ void printGraph() {
   generator.drawXAxisLabels();
   
   // Generate and draw curve
-  Serial.println("  → Generating build-up curve data...");
-  float* curveData = generator.generateBuildUpCurve(4800, 1);  // Pattern 1
-  
-  if (!curveData) {
-    Serial.println("  ✗ Failed to generate curve data!");
+  // Pattern system reference (previously generated formula-based curves here):
+  //  - Pattern 1: Quadratic build-up (smooth acceleration)
+  //  - Pattern 2: Linear with noise (steady rise)
+  // Now replaced by DataSource HAL so acquisition can be swapped (hardcoded ↔ UART IC)
+
+  Serial.println("  → Fetching curve data from DataSource...");
+
+  if (!dataSource->initialize()) {
+    Serial.println("  ✗ DataSource initialize() failed!");
     delete canvas;
     indicateFailure();
     return;
   }
-  
+
+  if (!dataSource->fetchData()) {
+    Serial.println("  ✗ DataSource fetchData() failed!");
+    delete canvas;
+    indicateFailure();
+    return;
+  }
+
+  const int16_t* curveData = dataSource->getData();
+  const uint16_t dataLen = dataSource->getDataLength();
+
+  if (!curveData) {
+    Serial.println("  ✗ DataSource returned null data!");
+    delete canvas;
+    indicateFailure();
+    return;
+  }
+
   Serial.println("  → Drawing curve...");
-  generator.drawCurve(curveData, 4800);
-  free(curveData);
+  generator.drawCurve(curveData, dataLen);
+  // No free() needed — PROGMEM data, not heap allocated
   
   // Draw bottom label
   generator.drawBottomLabel();
