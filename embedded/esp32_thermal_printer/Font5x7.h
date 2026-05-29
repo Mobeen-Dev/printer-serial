@@ -1,7 +1,7 @@
 /*
  * Font5x7.h
  * 5x7 pixel font for thermal printer text rendering
- * Supports digits 0-9 and letter K
+ * Supports digits 0-9 and letters C, E, I, K, M, P, R, S, T, U
  */
 
 #ifndef FONT_5X7_H
@@ -202,6 +202,16 @@ static const uint8_t font5x7_data[][7] PROGMEM = {
     0b10001000,
     0b10001000,
     0b01110000
+  },
+  // 'C' (index 19)
+  {
+    0b01110000,
+    0b10001000,
+    0b10000000,
+    0b10000000,
+    0b10000000,
+    0b10001000,
+    0b01110000
   }
 };
 
@@ -219,6 +229,7 @@ inline int8_t getCharIndex(char c) {
     case 'R': case 'r': return 16;
     case 'S': case 's': return 17;
     case 'U': case 'u': return 18;
+    case 'C': case 'c': return 19;
     default: return -1;
   }
 }

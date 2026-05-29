@@ -43,19 +43,19 @@ HardwareSerial PrinterSerial(1);
 
 // ======== Graph Parameters ========
 #define GRAPH_WIDTH  512
-#define GRAPH_HEIGHT 1200
-#define GRID_X_SPACING 80
+#define GRAPH_HEIGHT 750
+#define GRID_X_SPACING 75
 #define GRID_Y_SPACING 60
 #define GRID_DASHED true
 
 #define X_MAX 30
-#define X_STEP 2
+#define X_STEP 3
 #define Y_MAX 200
 #define Y_STEP 25
 
 #define LEFT_MARGIN 30
 #define TOP_MARGIN 70
-#define BOTTOM_MARGIN 10
+#define BOTTOM_MARGIN 40
 
 // ======== Global Objects ========
 ThermalPrinter* printer = nullptr;
@@ -110,6 +110,8 @@ void setup() {
   // Print configuration
   Serial.println("\nConfiguration:");
   Serial.printf("  Canvas: %dx%d pixels\n", GRAPH_WIDTH, GRAPH_HEIGHT + TOP_MARGIN + BOTTOM_MARGIN);
+  const uint32_t canvasBytes = (GRAPH_WIDTH / 8) * (GRAPH_HEIGHT + TOP_MARGIN + BOTTOM_MARGIN);
+  Serial.printf("  Canvas bytes: %lu\n", (unsigned long)canvasBytes);
   Serial.printf("  Graph area: %dx%d pixels\n", GRID_Y_SPACING * (Y_MAX / Y_STEP), GRAPH_HEIGHT - TOP_MARGIN);
   Serial.printf("  X-axis: 0 to %ds (step %ds)\n", X_MAX, X_STEP);
   Serial.printf("  Y-axis: 0 to %dK (step %dK)\n", Y_MAX, Y_STEP);
@@ -214,18 +216,21 @@ void printGraph() {
   generator.drawCurve(curveData, dataLen);
   // No free() needed — PROGMEM data, not heap allocated
   
-  // Draw bottom label
-  generator.drawBottomLabel();
-  
   Serial.println("  ✓ Graph generation complete");
   
   // Print to thermal printer
   Serial.println("\n[5/5] Printing to device...");
+  // Reset text mode before header to avoid stray characters
+  printer->setDefault();
+  printer->setLineHeight(24);
   printer->setAlign(ALIGN_CENTER);
-  printer->setFontSize(2, 2);
-  printer->println("Build-up Curve Graph");
-  printer->feed(8);
+  // Font (1,2): width=normal, height=doubled — fits 22-char title on one line
+  printer->println("Standard Failure Graph");
+  printer->feed(1);
   printer->setFontSize(1, 1);
+  // Y-axis unit label — printed centered before graph bitmap
+  printer->println("Load (kN)");
+  printer->feed(1);
   
   Serial.printf("  → Sending bitmap (%dx%d)...\n", canvas->getWidth(), canvas->getHeight());
   
@@ -237,12 +242,6 @@ void printGraph() {
   }
   
   Serial.println("  ✓ Bitmap sent");
-  
-  printer->feed(2);
-  printer->setFontSize(2, 2);
-  printer->setAlign(ALIGN_CENTER);
-  printer->println("PRESSURE");
-  printer->feed(3);
   
   delete canvas;
   

@@ -76,10 +76,14 @@ public:
   void setDensity(uint8_t density = 8, uint8_t breakTime = 2) {
     if (density > 15) density = 15;
     if (breakTime > 7) breakTime = 7;
-    
-    uint8_t printSetting = (density << 4) | breakTime;
-    uint8_t cmd[] = {0x12, 0x23, printSetting};
-    sendCommand(cmd, 3, 100);
+
+    uint16_t heatTime = 80 + (uint16_t)density * 10;
+    if (heatTime > 255) heatTime = 255;
+    uint8_t heatInterval = breakTime;
+
+    // ESC 7 n1 n2 n3 — heating dots/time/interval
+    uint8_t cmd[] = {ESC, '7', (uint8_t)heatTime, heatInterval, 0x00};
+    sendCommand(cmd, 5, 100);
   }
   
   // Set line spacing

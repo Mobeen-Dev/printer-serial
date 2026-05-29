@@ -107,7 +107,7 @@ public:
     uint16_t numXDiv = xMax / xStep;
     for (uint16_t i = 0; i <= numXDiv; i++) {
       int16_t yPos = graphStartY + i * gridXSpacing;
-      if (yPos < height + topMargin) {
+      if (yPos <= height + topMargin) {
         canvas->drawHorizontalLine(yPos, graphStartX, graphStartX + graphWidth, dashed);
       }
     }
@@ -123,23 +123,34 @@ public:
   // Draw X-axis labels (Time - vertical along left side)
   void drawXAxisLabels() {
     uint16_t numXDiv = xMax / xStep;
-    
+
+    // "TIME" at axis origin — unit context for X-axis (time), standard graph placement
+    canvas->drawText("TIME", 2, 30, 2, true);
+    // "sec" size 3 — unit label, intentionally larger than numeric labels for readability
+    canvas->drawText("sec", 2, graphStartY - 18, 3, true);
+
     for (uint16_t i = 0; i <= numXDiv; i++) {
       int16_t yPos = graphStartY + i * gridXSpacing;
       uint16_t value = i * xStep;
       
-      if (yPos < height + topMargin - 10) {
-        char label[4];
-        sprintf(label, "%d", value);
-        canvas->drawText(label, 10, yPos - 3, 2, true);  // Rotated 90°
+      const int16_t labelHeight = 14;  // 7px font height × size 2
+      int16_t labelY = yPos - 3;
+      const int16_t maxLabelY = (int16_t)canvas->getHeight() - labelHeight;
+      // Guard: ensure label (14px tall at size=2) does not overflow canvas bottom
+      if (labelY > maxLabelY) {
+        labelY = maxLabelY;
       }
+      if (labelY < 0) {
+        labelY = 0;
+      }
+
+      char label[4];
+      sprintf(label, "%d", value);
+      canvas->drawText(label, 10, labelY, 2, true);  // Rotated 90°
     }
   }
-  
-  // Draw bottom label
-  void drawBottomLabel() {
-    canvas->drawText("TIME", width / 2 - 15, height + topMargin + 5, 1, true);
-  }
+
+  // REMOVED: drawBottomLabel() — TIME label moved to axis origin (see drawXAxisLabels)
   
   // Draw curve on canvas
   void drawCurve(const int16_t* rawData, uint16_t dataLen, uint8_t thickness = 1) {
@@ -169,6 +180,9 @@ public:
     }
 
     if (dataLen >= graphHeight) {
+      // Pool window ratio auto-computed from dataLen / graphHeight
+      // Currently ~1.10 (750 points / ~680 pixel rows)
+      // Will increase automatically as data point count grows with real IC data
       const float ratio = (float)dataLen / (float)graphHeight;
 
       for (uint16_t i = 0; i < graphHeight; i++) {

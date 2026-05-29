@@ -3,7 +3,7 @@
 # - Then instant sharp drop to 0
 # - Remaining 20% stay at 0
 
-total_values = 2400
+total_values = 750
 
 rise_count = int(total_values * 0.8)  # 1920
 zero_count = total_values - rise_count  # 480
