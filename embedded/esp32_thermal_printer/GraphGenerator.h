@@ -125,9 +125,11 @@ public:
     uint16_t numXDiv = xMax / xStep;
 
     // "TIME" at axis origin — unit context for X-axis (time), standard graph placement
-    canvas->drawText("TIME", 2, 30, 2, true);
+    // Pseudo-bold: draw twice with a 1px offset
+    canvas->drawText("TIME", 2, graphStartY - 70, 2, true);
+    canvas->drawText("TIME", 3, graphStartY - 70, 2, true);
     // "sec" size 3 — unit label, intentionally larger than numeric labels for readability
-    canvas->drawText("sec", 2, graphStartY - 18, 3, true);
+    // canvas->drawText("sec", 2, graphStartY - 18, 3, true);
 
     for (uint16_t i = 0; i <= numXDiv; i++) {
       int16_t yPos = graphStartY + i * gridXSpacing;
