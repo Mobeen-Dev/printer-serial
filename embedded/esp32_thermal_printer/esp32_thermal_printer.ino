@@ -20,6 +20,8 @@
 #include <FastLED.h>
 #include <HardwareSerial.h>
 
+#define PRINTER_DEBUG
+
 #include "ThermalPrinter.h"
 #include "BitmapCanvas.h"
 #include "GraphGenerator.h"
@@ -87,6 +89,11 @@ void indicateIdle() {
 
 // ======== Setup ========
 void setup() {
+  pinMode(PRINTER_TX, OUTPUT);
+  digitalWrite(PRINTER_TX, HIGH);
+  pinMode(PRINTER_RX, INPUT_PULLUP);
+  delay(100);
+  
   // Initialize Serial for debugging
   Serial.begin(115200);
   delay(1000);
@@ -138,10 +145,10 @@ void printGraph() {
     return;
   }
   Serial.println("  ✓ Printer ready");
+  printer->cancelPrintData();
   
   // Configure printer
   Serial.println("\n[2/5] Configuring printer...");
-  printer->setDensity(10, 2);
   printer->setLineHeight(24);
   Serial.println("  ✓ Configuration applied");
   
@@ -220,11 +227,13 @@ void printGraph() {
   
   // Print to thermal printer
   Serial.println("\n[5/5] Printing to device...");
-  // Reset text mode before header to avoid stray characters
+  // Reset and cancel any queued noise before the header
   printer->setDefault();
+  printer->cancelPrintData();
   printer->setLineHeight(24);
   printer->setAlign(ALIGN_CENTER);
   // Font (1,2): width=normal, height=doubled — fits 22-char title on one line
+  printer->setFontSize(1, 2);
   printer->println("Standard Failure Graph");
   printer->feed(1);
   printer->setFontSize(1, 1);

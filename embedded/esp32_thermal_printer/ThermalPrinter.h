@@ -25,9 +25,22 @@ class ThermalPrinter {
 private:
   HardwareSerial& serial;
   
+  size_t writeBytes(const uint8_t* buf, size_t len, bool log = true) {
+#ifdef PRINTER_DEBUG
+    if (log) {
+      Serial.print("TX: ");
+      for (size_t i = 0; i < len; i++) {
+        Serial.printf("%02X ", buf[i]);
+      }
+      Serial.println();
+    }
+#endif
+    return serial.write(buf, len);
+  }
+
   // Send command with timeout
   bool sendCommand(const uint8_t* cmd, size_t len, uint16_t delayMs = 50) {
-    size_t written = serial.write(cmd, len);
+    size_t written = writeBytes(cmd, len);
     serial.flush();
     delay(delayMs);
     return (written == len);
@@ -35,7 +48,7 @@ private:
   
   // Send single byte command
   bool sendByte(uint8_t byte, uint16_t delayMs = 10) {
-    serial.write(byte);
+    writeBytes(&byte, 1);
     serial.flush();
     delay(delayMs);
     return true;
@@ -59,6 +72,8 @@ public:
       return false;
     }
     
+    delay(200);
+    
     // Set defaults
     setDefault();
     return true;
@@ -70,20 +85,17 @@ public:
     sendCommand(cmd, 2, 300);
   }
   
-  // Set print density
-  // density: 0-15 (higher = darker)
-  // breakTime: 0-7 (heating time)
+  // Set print density (TM-T88III does not support ESC 7; no-op)
   void setDensity(uint8_t density = 8, uint8_t breakTime = 2) {
-    if (density > 15) density = 15;
-    if (breakTime > 7) breakTime = 7;
-
-    uint16_t heatTime = 80 + (uint16_t)density * 10;
-    if (heatTime > 255) heatTime = 255;
-    uint8_t heatInterval = breakTime;
-
-    // ESC 7 n1 n2 n3 — heating dots/time/interval
-    uint8_t cmd[] = {ESC, '7', (uint8_t)heatTime, heatInterval, 0x00};
-    sendCommand(cmd, 5, 100);
+    (void)density;
+    (void)breakTime;
+  }
+  
+  // Cancel any queued print data (CAN)
+  void cancelPrintData(uint8_t count = 4) {
+    for (uint8_t i = 0; i < count; i++) {
+      sendByte(0x18, 5);
+    }
   }
   
   // Set line spacing
@@ -95,8 +107,11 @@ public:
   
   // Print text line
   void println(const char* text = "") {
-    serial.print(text);
-    serial.write('\n');
+    if (text && text[0] != '\0') {
+      writeBytes(reinterpret_cast<const uint8_t*>(text), strlen(text));
+    }
+    uint8_t newline = '\n';
+    writeBytes(&newline, 1);
     serial.flush();
     delay(10);
   }
@@ -144,7 +159,7 @@ public:
     
     while (sent < totalBytes) {
       size_t chunkSize = min(CHUNK_SIZE, totalBytes - sent);
-      size_t written = serial.write(bitmapData + sent, chunkSize);
+      size_t written = writeBytes(bitmapData + sent, chunkSize, false);
       
       if (written != chunkSize) {
         Serial.printf("Warning: Sent %d of %d bytes\n", written, chunkSize);
