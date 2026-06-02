@@ -12,11 +12,12 @@
 
 #include <Arduino.h>
 
-class DataSource {
+class DataSource
+{
 public:
   virtual bool initialize() = 0;
-  virtual bool fetchData() = 0;                // Populates internal buffer
-  virtual const int16_t* getData() const = 0;
+  virtual bool fetchData() = 0; // Populates internal buffer
+  virtual const int16_t *getData() const = 0;
   virtual uint16_t getDataLength() const = 0;
   virtual ~DataSource() {}
 };
