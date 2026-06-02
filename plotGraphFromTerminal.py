@@ -511,7 +511,7 @@ def create_complete_graph():
         value = i * Y_STEP
 
         if value != 0:
-            label = f"{value}K"
+            label = f"{value}"
             canvas.draw_text(label, x_pos - 13, 5, 2, rotate_90=True)
 
     # STEP 2: Draw grid BELOW the Y-axis labels
