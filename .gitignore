@@ -8,3 +8,6 @@ escpos_output/
 # bitmap_tool.py
 logo.png
 # time-efficient-prompt.md
+
+.vscode/*
+.vscode/settings.json

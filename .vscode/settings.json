@@ -1,3 +1,7 @@
 {
-  "C_Cpp.errorSquiggles": "disabled"
+  "C_Cpp.errorSquiggles": "disabled",
+  "idf.currentSetup": "C:\\.espressif\\v6.0.1\\esp-idf",
+  "idf.openOcdConfigs": [
+    "board/esp32c3-builtin.cfg"
+  ]
 }
