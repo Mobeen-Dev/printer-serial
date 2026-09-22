@@ -174,7 +174,8 @@ public:
       }
 
       char label[4];
-      sprintf(label, "%d", value);
+      // sprintf(label, "%d", value);
+       itoa(value, label, 10);
       canvas->drawText(label, 10, labelY, 2, true); // Rotated 90°
     }
   }
