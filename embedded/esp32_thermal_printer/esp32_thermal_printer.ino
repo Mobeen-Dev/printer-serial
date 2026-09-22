@@ -239,17 +239,41 @@ void printGraph()
 
   // Print to thermal printer
   Serial.println("\n[5/5] Printing to device...");
-  // Reset and cancel any queued noise before the header
+  // ── Reset printer state ──────────────────────────────────────────
   printer->setDefault();
   printer->cancelPrintData();
   printer->setLineHeight(24);
+
+  // ── ZONE 1 : Title ───────────────────────────────────────────────
   printer->setAlign(ALIGN_CENTER);
-  // Font (1,2): width=normal, height=doubled — fits 22-char title on one line
-  printer->setFontSize(1, 2);
+  printer->setFontSize(1, 2); // double-height, fits on one line
   printer->println("Standard Failure Graph");
-  printer->feed(1);
+  printer->feed(2);
+
+  // ── ZONE 2 : Date / Time stamp ───────────────────────────────────
+  // TODO: replace these literals with RTC / NTP values when available
+  const char *printDate = "2025-06-12";
+  const char *printTime = "09:41:33";
+
+  // Build "Date: YYYY-MM-DD        Time: HH:MM:SS"
+  // Left-pad + right-pad so the two fields sit at opposite ends of the
+  // 48-column line (normal font on 80 mm paper ≈ 48 chars wide).
+  char stampLine[64];
+  snprintf(stampLine, sizeof(stampLine),
+           "Date: %-16s Time: %s", // 16-char gap pushes Time to the right
+           printDate, printTime);
+
+  printer->setAlign(ALIGN_LEFT);
   printer->setFontSize(1, 1);
-  // Y-axis unit label — printed centered before graph bitmap
+  printer->println(stampLine);
+  printer->feed(1);
+
+  // ── ZONE 3 : Sample Number (blank — operator fills in by hand) ───
+  printer->println("Sample No."); // label only, no value
+  printer->feed(1);
+
+  // ── Y-axis unit label (sits just above the graph bitmap) ─────────
+  printer->setAlign(ALIGN_CENTER);
   printer->println("Load (kN)");
   printer->feed(1);
 
