@@ -11,3 +11,5 @@ logo.png
 
 .vscode/*
 .vscode/settings.json
+./github
+build/
