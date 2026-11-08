@@ -1,0 +1,15 @@
+# Default sdkconfig overrides for first `idf.py set-target esp32s3` / build.
+# Run `idf.py menuconfig` afterward for any project-specific tuning.
+
+CONFIG_IDF_TARGET="esp32s3"
+
+# C++ exceptions off by default in IDF; this project doesn't use them.
+# Leave at default unless you add code that throws.
+
+# Bump the default main task stack a bit since GraphGenerator/BitmapCanvas
+# allocate moderately large buffers and do local recursion-free loops only,
+# but app_main() does heavier setup work before handing off.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Useful while bringing the UART/printer link up.
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
